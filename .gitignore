@@ -1,0 +1,19 @@
+# Raw personal/financial source files
+data/raw/
+!data/raw/.gitkeep
+
+# Secrets 
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
