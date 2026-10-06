@@ -1,5 +1,5 @@
 # Raw personal/financial source files
-data/raw/
+data/raw/*
 !data/raw/.gitkeep
 
 # Secrets 
