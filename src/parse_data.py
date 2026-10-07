@@ -20,7 +20,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 
 # 1. 2022 Flyp CSV exports (item level: Grailed + eBay)
 
-def parse_items_csv():
+def parse_items_csvs():
     csv_files = {
         "Paypal 2022 COG.csv": "grailed",
         "eBay 2022 COG.csv": "ebay",
@@ -115,11 +115,54 @@ def parse_ebay_transactions():
     print(f"  → eBay total: {len(result)} orders")
     return result
 
+# 3. Depop seller dashboard CSVs (2023-2025)
+
+def parse_depop_sales():
+    files = sorted(RAW.glob("Depop Sales*.csv"))
+    if not files:
+        print(" [SKIP] No Depop Sales CSVs found")
+        return pd.DataFrame()
+
+    def strip_dollar(series):
+        return pd.to_numeric(
+            series.astype(str).str.replace(r"[$,]", "", regex=True),
+            errors="coerce"
+        ).fillna(0)
+
+    frames = []
+    for path in files:
+        df = pd.read_csv(path, low_memory=False).dropna(subset=["Date of sale"])
+        df["sold_date"] = pd.to_datetime(df["Date of sale"], format="%m/%d/%Y", errors="coerce")
+        df = df.dropna(subset=["sold_date"])
+        df["name"]         = df["Description"].astype(str).str.split("\n").str[0].str.strip().str[:80]
+        df["revenue"]      = strip_dollar(df["Item price"])
+        df["shipping_rev"] = strip_dollar(df["Buyer shipping cost"])
+        df["usps_cost"]    = strip_dollar(df["USPS Cost"])
+        df["platform_fee"] = strip_dollar(df["Depop fee"]) + strip_dollar(df["Depop Payments fee"])
+        df["net_payout"]   = df["revenue"] - df["platform_fee"] - df["usps_cost"]
+        df["platform"]     = "depop"
+        df["cog"]          = 0.0
+
+        keep = ["name", "platform", "cog", "revenue", "shipping_rev",
+                "usps_cost", "platform_fee", "net_payout", "sold_date"]
+        frames.append(df[keep])
+        print(f"  ✓ {path.name}: {len(df)} sales")
+
+    if not frames:
+        return pd.DataFrame()
+
+    result = pd.concat(frames, ignore_index=True)
+    result = result[result["revenue"] > 0]
+    result["sold_year"]  = result["sold_date"].dt.year
+    result["sold_month"] = result["sold_date"].dt.month
+    print(f"  → Depop total: {len(result)} sales")
+    return result
+
 # MAIN --------------------------------
 
 if __name__ == "__main__":
     print("\n-- 2022 Flyp CSV exports--")
-    items_df = parse_items_csv()
+    items_df = parse_items_csvs()
     if not items_df.empty:
         items_df.to_csv(OUT / "items_2022.csv", index=False)   
 
@@ -127,5 +170,10 @@ if __name__ == "__main__":
     ebay_df = parse_ebay_transactions()
     if not ebay_df.empty:
         ebay_df.to_csv(OUT / "ebay_transactions.csv", index=False)
+
+    print("\n── Depop Sales CSVs ──")
+    depop_df = parse_depop_sales()
+    if not depop_df.empty:
+        depop_df.to_csv(OUT / "depop_sales.csv", index=False)
 
     print("\n Done.\n")    
