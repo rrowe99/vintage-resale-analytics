@@ -10,7 +10,9 @@ Reads from: data/raw/
 Writes to:  data/processed/
 """
 
+import re
 import pandas as pd
+import pdfplumber
 from pathlib import Path
 
 BASE = Path(__file__).parent.parent
@@ -158,6 +160,65 @@ def parse_depop_sales():
     print(f"  → Depop total: {len(result)} sales")
     return result
 
+# 4. 1099-K PDFs (monthly revenue by platform)
+
+MONTH_MAP = {
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6, "july": 7,
+    "august":8, "september": 9, "october": 10, "november": 11, "december": 12,
+}
+
+def _extract_1099_monthly(pdf_path, platform, year):
+    records = []
+    with pdfplumber.open(pdf_path) as pdf:
+        tables = pdf.pages[0].extract_tables()
+        for table in tables:
+            for row in (table or []):
+                for cell in (row or []):
+                    if not cell:
+                        continue
+                    matches = re.findall(
+                    r'5[a-l]\s+(\w+)\s*\$\s*([\d,]+\.?\d*)',
+                        cell, re.IGNORECASE
+                    )
+                    for month_name, amount_str in matches:
+                        month_num = MONTH_MAP.get(month_name.lower())
+                        if month_num:
+                            amount = float(amount_str.replace(",", ""))
+                            if amount > 0:
+                                records.append({
+                                    "year": year, "month": month_num,
+                                    "platform": platform, "gross_revenue": amount,
+                                })
+    return records
+
+def parse_1099s():
+    files = [("Paypal_1099K_2022.pdf",         "grailed", 2022),
+        ("eBay_1099-K_2022.pdf",          "ebay",    2022),
+        ("eBay_1099-K_2023.pdf",          "ebay",    2023),
+        ("DEPOPtax_form_1099k_2023.pdf",  "depop",   2023),
+        ("ebay_1099-K_2024.pdf",          "ebay",    2024),
+        ("depop_tax_form_1099k_2024.pdf", "depop",   2024),
+        ("eBay_1099-K_2025.pdf",          "ebay",    2025),
+        ("Depop_tax_form_1099k_2025.pdf", "depop",   2025),
+    ]
+    all_records = []
+    for filename, platform, year in files:
+        path = RAW / filename
+        if not path.exists():
+            print(f"    [SKIP] {filename}")
+            continue
+        records = _extract_1099_monthly(path, platform, year)
+        all_records.extend(records)
+        print(f" ✓ {filename}: {len(records)} months")
+        
+    df = pd.DataFrame(all_records)
+    if df.empty:
+        return df
+    df["date"] = pd.to_datetime(
+        df["year"].astype(str) + "-" + df["month"].astype(str).str.zfill(2) + "-01"
+    )
+    return df.sort_values(["date", "platform"]).reset_index(drop=True)
+
 # MAIN --------------------------------
 
 if __name__ == "__main__":
@@ -175,5 +236,10 @@ if __name__ == "__main__":
     depop_df = parse_depop_sales()
     if not depop_df.empty:
         depop_df.to_csv(OUT / "depop_sales.csv", index=False)
+
+    print("\n── 1099-K PDFs ──")
+    monthly_df = parse_1099s()
+    if not monthly_df.empty:
+        monthly_df.to_csv(OUT / "monthly_revenue.csv", index=False)
 
     print("\n Done.\n")    
