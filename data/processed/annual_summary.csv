@@ -1,0 +1,12 @@
+year,platform,gross_revenue,num_transactions,notes
+2021,ebay,9149.72,33.0,"eBay transactions PDF (33 orders, pre-vintage focus)"
+2022,grailed,7092.63,49.0,PayPal 1099-K
+2022,ebay,1173.31,10.0,eBay 1099-K Oct-Dec only
+2023,ebay,11250.29,52.0,eBay 1099-K
+2023,depop,6013.02,126.0,Depop 1099-K
+2024,ebay,7192.55,88.0,eBay 1099-K
+2024,depop,10281.57,215.0,Depop 1099-K
+2024,market,8000.0,,Estimated from market notes
+2025,ebay,15609.53,161.0,eBay 1099-K
+2025,depop,1912.08,24.0,Depop 1099-K
+2025,market,8500.0,,Brimfield May + other markets
