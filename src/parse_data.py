@@ -220,25 +220,38 @@ def parse_1099s():
     return df.sort_values(["date", "platform"]).reset_index(drop=True)
 
 
-# 5. Annual summary (from 1099 totals + 2025 business sumary PDF)
+# 5. Annual summary (online totals from 1099s + in person totals from the event log)
 
 def build_annual_summary():
-    data = [
-        (2021, "ebay",    9149.72,  33,   "eBay transactions PDF (33 orders, pre-vintage focus)"),
-        (2022, "grailed", 7092.63,  49,   "PayPal 1099-K"),
-        (2022, "ebay",    1173.31,  10,   "eBay 1099-K Oct-Dec only"),
-        (2023, "ebay",    11250.29, 52,   "eBay 1099-K"),
-        (2023, "depop",   6013.02,  126,  "Depop 1099-K"),
-        (2024, "ebay",    7192.55,  88,   "eBay 1099-K"),
-        (2024, "depop",   10281.57, 215,  "Depop 1099-K"),
-        (2024, "market",  8000,     None, "Estimated from market notes"),
-        (2025, "ebay",    15609.53, 161,  "eBay 1099-K"),
-        (2025, "depop",   1912.08,  24,   "Depop 1099-K"),
-        (2025, "market",  8500,     None, "Brimfield May + other markets"),
+    online = [
+        (2021, "ebay",      9149.72,  33, "eBay transactions PDF (33 orders, pre-vintage focus)"),
+        (2022, "grailed",   7092.63,  49, "PayPal 1099-K"),
+        (2022, "ebay",      1173.31,  10, "eBay 1099-K Oct-Dec only"),
+        (2023, "ebay",      11250.29, 52, "eBay 1099-K"),
+        (2023, "depop",     6013.02, 126, "Depop 1099-K"),
+        (2023, "instagram", 2700.00,   1, "1985 Air Jordan 1 Chicago, direct sale"),
+        (2024, "ebay",      7192.55,  88, "eBay 1099-K"),
+        (2024, "depop",     10281.57, 215, "Depop 1099-K"),
+        (2025, "ebay",      15609.53, 161, "eBay 1099-K"),
+        (2025, "depop",     1912.08,  24, "Depop 1099-K"),
     ]
-    df = pd.DataFrame(data, columns=["year", "platform", "gross_revenue", "num_transactions", "notes"])
-    df["year"] = df["year"].astype(int)
-    return df
+    df = pd.DataFrame(online, columns=["year", "platform", "gross_revenue", "num_transactions", "notes"])
+
+    # In person totals are calculated from the market event log so the two sources can't disagree
+    events = build_market_events()
+    events = events[events["year"] <= 2025].copy()
+    events["platform"] = "market"
+    events.loc[events["event"] == "Instagram", "platform"] = "instagram"
+
+    in_person = events.groupby(["year", "platform"], as_index=False).agg(
+        gross_revenue=("richie_revenue", "sum")
+    )
+    in_person["num_transactions"] = None
+    in_person["notes"] = "Summed from market event log"
+
+    df = pd.concat([df, in_person], ignore_index=True)
+    df["num_transactions"] = df["num_transactions"].astype("Int64")
+    return df.sort_values(["year", "platform"]).reset_index(drop=True)
 
 # 6. Expenses (from Expenses 2024 PDF and 2025 business summary pdf)
 
@@ -362,5 +375,5 @@ if __name__ == "__main__":
     print("\n── Market events ──")
     market_df = build_market_events()
     market_df.to_csv(OUT / "market_events.csv", index=False)
-    
+
     print("\n Done.\n")    
