@@ -22,7 +22,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 
 # 1. 2022 Flyp CSV exports (item level: Grailed + eBay)
 
-def parse_items_csvs():
+def parse_item_csvs():
     csv_files = {
         "Paypal 2022 COG.csv": "grailed",
         "eBay 2022 COG.csv": "ebay",
@@ -345,7 +345,7 @@ def build_notable_items():
 
 if __name__ == "__main__":
     print("\n-- 2022 Flyp CSV exports--")
-    items_df = parse_items_csvs()
+    items_df = parse_item_csvs()
     if not items_df.empty:
         items_df.to_csv(OUT / "items_2022.csv", index=False)   
 
