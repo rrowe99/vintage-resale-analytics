@@ -67,19 +67,23 @@ CREATE TABLE ebay_transactions (
     sold_month  SMALLINT    NOT NULL
 );
 
-CREATE TABLE depop_transactions (
-    sale_id     SERIAL PRIMARY KEY,
-    name        VARCHAR(150)    NOT NULL,
-    platform    VARCHAR(20) NOT NULL REFERENCES platforms (platform),
-    cog         NUMERIC(10,2),
-    revenue     NUMERIC(10,2) NOT NULL CHECK (revenue > 0),
-    shipping_rev    NUMERIC(10,2) NOT NULL,
-    usps_cost   NUMERIC(10,2) NOT NULL,
-    platform_fee    NUMERIC(10,2) NOT NULL CHECK (platform_fee >= 0),
-    net_payout      NUMERIC(10,2) NOT NULL,
-    sold_date       DATE    NOT NULL,
-    sold_year       SMALLINT    NOT NULL,
-    sold_month      SMALLINT    NOT NULL
+CREATE TABLE depop_sales (
+    sale_id       SERIAL PRIMARY KEY,
+    name          VARCHAR(150)  NOT NULL,
+    platform      VARCHAR(20)   NOT NULL REFERENCES platforms (platform),
+    cog           NUMERIC(10,2),
+    revenue       NUMERIC(10,2) NOT NULL CHECK (revenue > 0),
+    shipping_rev  NUMERIC(10,2) NOT NULL,
+    usps_cost     NUMERIC(10,2) NOT NULL,
+    platform_fee  NUMERIC(10,2) NOT NULL CHECK (platform_fee >= 0),
+    net_payout    NUMERIC(10,2) NOT NULL,
+    sold_date     DATE          NOT NULL,
+    sold_year     SMALLINT      NOT NULL,
+    sold_month    SMALLINT      NOT NULL,
+    listed_date   DATE,
+    brand         VARCHAR(50),
+    category      VARCHAR(30),
+    CONSTRAINT listed_before_sold CHECK (listed_date <= sold_date)
 );
 
 CREATE TABLE items_2022 (
