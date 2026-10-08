@@ -37,7 +37,7 @@ CREATE TABLE annual_summary (
 CREATE TABLE monthly_revenue (
     year    SMALLINT    NOT NULL,
     month   SMALLINT    NOT NULL CHECK(month BETWEEN 1 AND 12),
-    platform    SMALLCHAR(20)   NOT NULL REFERENCES platforms (platform),
+    platform    VARCHAR(20)   NOT NULL REFERENCES platforms (platform),
     gross_revenue   NUMERIC(10,2)   NOT NULL CHECK(gross_revenue > 0),
     month_start     DATE    NOT NULL,
     PRIMARY KEY (year, month, platform)
@@ -53,7 +53,7 @@ CREATE TABLE expenses (
 -- Individual sales
 
 CREATE TABLE ebay_transactions (
-    sale_id     INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    sale_id     SERIAL PRIMARY KEY,
     name        VARCHAR(150)    NOT NULL,
     platform    VARCHAR(20)     NOT NULL REFERENCES platforms (platform),
     category    NUMERIC(10,2),
@@ -68,7 +68,7 @@ CREATE TABLE ebay_transactions (
 );
 
 CREATE TABLE depop_transactions (
-    sale_id     INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    sale_id     SERIAL PRIMARY KEY,
     name        VARCHAR(150)    NOT NULL,
     platform    VARCHAR(20) NOT NULL REFERENCES platforms (platform),
     cog         NUMERIC(10,2),
@@ -83,7 +83,7 @@ CREATE TABLE depop_transactions (
 );
 
 CREATE TABLE items_2022 (
-    item_id     INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    item_id     SERIAL PRIMARY KEY,
     name        VARCHAR(150)    NOT NULL,
     brand       VARCHAR(50),
     condition   VARCHAR(20),
@@ -99,7 +99,7 @@ CREATE TABLE items_2022 (
 );
 
 CREATE TABLE market_items (
-    sale_id     INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    sale_id     SERIAL PRIMARY KEY,
     sale_date   DATE    NOT NULL,
     venue       VARCHAR(40) NOT NULL,
     price       NUMERIC(10,2) NOT NULL CHECK (price > 0),
