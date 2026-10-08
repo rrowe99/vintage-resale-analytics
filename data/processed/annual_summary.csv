@@ -7,8 +7,8 @@ year,platform,gross_revenue,num_transactions,notes
 2023,instagram,2700.0,1,"1985 Air Jordan 1 Chicago, direct sale"
 2024,depop,10281.57,215,Depop 1099-K
 2024,ebay,7192.55,88,eBay 1099-K
-2024,market,18800.0,,Summed from market event log
+2024,market,23861.0,,Summed from itemized market notes
 2025,depop,1912.08,24,Depop 1099-K
 2025,ebay,15609.53,161,eBay 1099-K
-2025,instagram,2635.0,,Summed from market event log
-2025,market,10865.0,,Summed from market event log
+2025,instagram,2635.0,,Summed from itemized market notes
+2025,market,11135.0,,Summed from itemized market notes

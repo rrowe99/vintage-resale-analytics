@@ -247,7 +247,7 @@ def build_annual_summary():
         gross_revenue=("richie_revenue", "sum")
     )
     in_person["num_transactions"] = None
-    in_person["notes"] = "Summed from market event log"
+    in_person["notes"] = "Summed from itemized market notes"
 
     df = pd.concat([df, in_person], ignore_index=True)
     df["num_transactions"] = df["num_transactions"].astype("Int64")
@@ -270,50 +270,20 @@ def build_expenses():
     ]
     return pd.DataFrame(data, columns=["year", "category", "amount"])
 
-#7. In person market events
-
-MARKET_EVENTS = [
-    ("2024-06-02", "Fenway Flea",        670, 1320),
-    ("2024-06-08", "Select Markets",     800, 1100),
-    ("2024-06-09", "Fenway Flea",        910, 1970),
-    ("2024-06-16", "Fenway Flea",        590,  590),
-    ("2024-06-23", "Fenway Flea",       1000, 1330),
-    ("2024-06-30", "Fenway Flea",        885,  885),
-    ("2024-07-12", "Brimfield",          620,  620),
-    ("2024-07-20", "Found (various)",    700,  700),
-    ("2024-07-28", "Fenway Flea",        590,  790),
-    ("2024-08-04", "Fenway Flea",        630,  780),
-    ("2024-08-11", "Fenway Flea",        590,  590),
-    ("2024-08-18", "Fenway Flea",        790, 1240),
-    ("2024-09-01", "Fenway Flea",        670, 1070),
-    ("2024-09-05", "Brimfield",         1060, 1060),
-    ("2024-09-08", "Fenway Flea",        570, 1130),
-    ("2024-09-15", "Select Markets",    1200, 1200),
-    ("2024-09-28", "BS Boutique",        570,  570),
-    ("2024-09-29", "Fenway Flea",        315,  315),
-    ("2024-10-13", "Bow Vintage",        395,  705),
-    ("2024-10-19", "Found Market",       730, 1070),
-    ("2024-10-26", "Found Market",       885,  885),
-    ("2024-11-02", "Found Market",      1165, 1390),
-    ("2024-11-16", "Select Markets",    1480, 2283),
-    ("2024-11-19", "UML Event",          720,  750),
-    ("2024-11-21", "BS Boutique",        265,  265),
-    ("2025-02-15", "Select Markets",     355,  455),
-    ("2025-05-13", "Brimfield",         8500, 8500),
-    ("2025-08-09", "Market",             360,  360),
-    ("2025-08-10", "Market",             325,  325),
-    ("2025-08-24", "Fenway Flea",        315,  315),
-    ("2025-09-04", "Brimfield",         1010, 1010),
-    ("2025-09-16", "Instagram",         2250, 2250),
-    ("2025-12-13", "Instagram",          385,  385),
-    ("2026-05-29", "Downtown Crossing",  340,  340),
-]
+# 7. In person market events (daily totals, derived from itemized market notes)
 
 def build_market_events():
-    df = pd.DataFrame(MARKET_EVENTS,
-                      columns = ["date", "event", "richie_revenue", "total_revenue"])
-    df["date"] = pd.to_datetime(df["date"])
-    df["year"] = df["date"].dt.year
+    items = parse_market_notes()
+    if items.empty:
+        return pd.DataFrame()
+
+    df = items.groupby(["date", "venue"], as_index=False).agg(
+        items=("price", "count"),
+        richie_revenue=("price", "sum"),
+    )
+    df = df.rename(columns={"venue": "event"})
+    df["days"]  = df["event"].str.contains("weekend").map({True: 2, False: 1})
+    df["year"]  = df["date"].dt.year
     df["month"] = df["date"].dt.month
     return df
 
