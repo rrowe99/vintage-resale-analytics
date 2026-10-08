@@ -341,6 +341,116 @@ def build_notable_items():
     return df
 
 
+# 9. In person market notes (item level sales from handwritten notes)
+
+VENUES = [
+    ("instagram", "Instagram"),
+    ("brimfield", "Brimfield"),
+    ("select", "Select Markets"),
+    ("bow", "Bow Vintage"),
+    ("uml", "UML Event"),
+    ("boutique", "BS Boutique"),
+    ("downtown", "Downtown Crossing"),
+    ("fenway", "Fenway Flea"),
+    ("found", "Found"),
+]
+VENUE_OVERRIDES = {"2025-12-13": "Instagram"}
+UNRECORDED_TOTALS = {"2025-05-13": 8500}        # Brimfield: day total know, most items not logged
+
+DATE_RE     = re.compile(r"(\d{1,2})/(\d{1,2})(?:/(\d{2}))?")
+PRICE_FIRST = re.compile(r"^\$?(\d+(?:\.\d+)?)\s*[-–—]?\s*(.*)$")    # "25 - blue shorts"
+PRICE_LAST  = re.compile(r"^(.*?)\s*[-–—]\s*\$?(\d+(?:\.\d+)?)$")    # "Blue shorts- 25"
+PARTNER_RE  = re.compile(r"^(daniel|christian|john)( sales)?[\s—–-]*$", re.IGNORECASE)
+MINE_RE     = re.compile(r"^(my sales|me|richie)[\s—–-]*$", re.IGNORECASE)
+SKIP_RE     = re.compile(r"^(notable sales|maybe\b|\d+\s+(pieces|tops|bottoms)$)", re.IGNORECASE)
+
+def _is_header(line):
+    starts_with_price = line.lstrip("$")[:1].isdigit() and not DATE_RE.match(line)
+    return bool(DATE_RE.search(line)) and not starts_with_price and not PRICE_LAST.match(line)
+
+
+def _parse_header(line, last_year):
+    m = DATE_RE.search(line)
+    year = int("20" + m.group(3)) if m.group(3) else last_year
+    date = f"{year}-{int(m.group(1)):02d}-{int(m.group(2)):02d}"
+    low = line.lower()
+    if "found" in low and "fenway" in low:
+        venue = "Found + Fenway (weekend)"
+    else:
+        venue = next((name for key, name in VENUES if key in low), "Market")
+    return date, VENUE_OVERRIDES.get(date, venue), year
+
+
+def parse_market_notes():
+    path = RAW / "In Person Market Sales Data.pdf"
+    if not path.exists():
+        print("  [SKIP] In Person Market Sales Data.pdf")
+        return pd.DataFrame()
+
+    with pdfplumber.open(path) as pdf:
+        lines = [l.strip() for page in pdf.pages for l in (page.extract_text() or "").splitlines()]
+
+    rows, skipped = [], []
+    date = venue = None
+    year, seller = 2024, "richie"
+
+    for line in lines:
+        if not line:
+            continue
+        low = line.lower()
+
+        # 1. A new market heading resets the date, venue, and seller
+        if _is_header(line):
+            date, venue, year = _parse_header(line, year)
+            seller = "richie"
+            continue
+        if low.startswith("day 2"):
+            date = (pd.Timestamp(date) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+            continue
+
+        # 2. Section markers switch whose sales we're reading
+        if PARTNER_RE.match(line):
+            seller = "partner"
+            continue
+        if MINE_RE.match(line):
+            seller = "richie"
+            continue
+
+        # 3. Skip totals, expenses (lines starting with "-"), and notes
+        if "total" in low or line.startswith("-") or SKIP_RE.match(line):
+            skipped.append(line)
+            continue
+
+        # 4. Item lines come in two formats: price first, or price last
+        first, last = PRICE_FIRST.match(line), PRICE_LAST.match(line)
+        if first and line.lstrip("$")[:1].isdigit():
+            price, item = float(first.group(1)), first.group(2)
+        elif last:
+            item, price = last.group(1), float(last.group(2))
+        else:
+            skipped.append(line)
+            continue
+
+        if seller == "richie":
+            rows.append({"date": date, "venue": venue, "price": price,
+                         "item": item.strip(" -–—") or None})
+
+    df = pd.DataFrame(rows)
+
+    # Days where the total was known but individual sales weren't logged
+    for d, total in UNRECORDED_TOTALS.items():
+        day = df[df["date"] == d]
+        filler = {"date": d, "venue": day["venue"].iloc[0],
+                  "price": total - day["price"].sum(),
+                  "item": "Unrecorded sales (too busy to log individually)"}
+        df = pd.concat([df, pd.DataFrame([filler])], ignore_index=True)
+
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values("date", kind="stable").reset_index(drop=True)
+    print(f"  ✓ Market notes: {len(df)} items across {df['date'].nunique()} dates "
+          f"({len(skipped)} non-item lines skipped)")
+    return df
+
 # MAIN --------------------------------
 
 if __name__ == "__main__":
@@ -375,5 +485,10 @@ if __name__ == "__main__":
     print("\n── Market events ──")
     market_df = build_market_events()
     market_df.to_csv(OUT / "market_events.csv", index=False)
+
+    print("\n── Market notes (item-level) ──")
+    market_items_df = parse_market_notes()
+    if not market_items_df.empty:
+        market_items_df.to_csv(OUT / "market_items.csv", index=False)
 
     print("\n Done.\n")    
