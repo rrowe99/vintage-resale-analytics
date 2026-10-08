@@ -60,58 +60,62 @@ def parse_item_csvs():
 def parse_ebay_transactions():
     files = sorted(RAW.glob("Transaction_report_*.csv"))
     if not files:
-        print(" [SKIP] No eBay transaction CSVs found")
+        print("  [SKIP] No eBay transaction CSVs found")
         return pd.DataFrame()
 
     def clean_num(series):
-        """Strip commas from currency strings before converting (handles $1,000+ values)"""
+        """Strip commas from currency strings before converting (handles $1,000+ values)."""
         return pd.to_numeric(
             series.astype(str).str.replace(",", "", regex=False),
             errors="coerce"
         ).fillna(0)
 
+    # Read every file first: a refund can land in a later file than its order
     frames = []
     for path in files:
         with open(path, encoding="utf-8-sig") as f:
             lines = f.readlines()
         header_idx = next(
-            (i for i, l in enumerate(lines)
-             if l.startswith("Transaction creation date")),
-             None
+            (i for i, l in enumerate(lines) if l.startswith("Transaction creation date")),
+            None
         )
         if header_idx is None:
-            print(f"    [SKIP] No header in {path.name}")
+            print(f"  [SKIP] No header in {path.name}")
             continue
-
-        df = pd.read_csv(path, skiprows=header_idx, low_memory=False)
-        df = df[df["Type"] == "Order"].copy()
-        if df.empty:
-            continue
-
-        df["sold_date"] = pd.to_datetime(
-            df["Transaction creation date"], format = "%b %d, %Y", errors="coerce"
-        )
-        df["revenue"]          = clean_num(df["Gross transaction amount"])
-        df["item_subtotal"]    = clean_num(df["Item subtotal"])
-        df["shipping_charged"] = clean_num(df["Shipping and handling"])
-        fvf_fixed              = clean_num(df["Final Value Fee - fixed"]).abs()
-        fvf_variable           = clean_num(df["Final Value Fee - variable"]).abs()
-        df["platform_fee"]     = fvf_fixed + fvf_variable
-        df["net_payout"]       = clean_num(df["Net amount"])
-        df["name"]             = df["Item title"].fillna("Unknown").str[:80]
-        df["platform"]         = "ebay"
-        df["cog"]              = 0.0
-
-        keep = ["name", "platform", "cog", "revenue", "item_subtotal",
-                "shipping_charged", "platform_fee", "net_payout", "sold_date"]
-        frames.append(df[keep])
-        print(f"  ✓ {path.name}: {len(df)} orders")
+        raw_file = pd.read_csv(path, skiprows=header_idx, low_memory=False)
+        frames.append(raw_file)
+        print(f"  ✓ {path.name}: {(raw_file['Type'] == 'Order').sum()} orders")
 
     if not frames:
         return pd.DataFrame()
+    raw = pd.concat(frames, ignore_index=True)
 
-    result = pd.concat(frames, ignore_index=True)
-    result = result[result["revenue"] > 0]
+    # Refunds are separate rows, linked to the original sale by order number
+    refunds = raw[raw["Type"] == "Refund"].copy()
+    refunds["refund_amount"] = clean_num(refunds["Gross transaction amount"]).abs()
+    refund_totals = refunds.groupby("Order number")["refund_amount"].sum()
+
+    df = raw[raw["Type"] == "Order"].copy()
+    df["revenue"] = clean_num(df["Gross transaction amount"])
+    refunded = df["Order number"].map(refund_totals).fillna(0)
+    fully_refunded = refunded >= df["revenue"]
+    df = df[~fully_refunded].copy()
+    print(f"  → removed {fully_refunded.sum()} fully refunded orders")
+
+    df["sold_date"]        = pd.to_datetime(df["Transaction creation date"], format="%b %d, %Y", errors="coerce")
+    df["item_subtotal"]    = clean_num(df["Item subtotal"])
+    df["shipping_charged"] = clean_num(df["Shipping and handling"])
+    fvf_fixed              = clean_num(df["Final Value Fee - fixed"]).abs()
+    fvf_variable           = clean_num(df["Final Value Fee - variable"]).abs()
+    df["platform_fee"]     = fvf_fixed + fvf_variable
+    df["net_payout"]       = clean_num(df["Net amount"])
+    df["name"]             = df["Item title"].fillna("Unknown").str[:80]
+    df["platform"]         = "ebay"
+    df["cog"]              = 0.0
+
+    keep = ["name", "platform", "cog", "revenue", "item_subtotal",
+            "shipping_charged", "platform_fee", "net_payout", "sold_date"]
+    result = df[df["revenue"] > 0][keep].copy()
     result["sold_year"]  = result["sold_date"].dt.year
     result["sold_month"] = result["sold_date"].dt.month
     print(f"  → eBay total: {len(result)} orders")
@@ -122,7 +126,7 @@ def parse_ebay_transactions():
 def parse_depop_sales():
     files = sorted(RAW.glob("Depop Sales*.csv"))
     if not files:
-        print(" [SKIP] No Depop Sales CSVs found")
+        print("  [SKIP] No Depop Sales CSVs found")
         return pd.DataFrame()
 
     def strip_dollar(series):
@@ -133,30 +137,41 @@ def parse_depop_sales():
 
     frames = []
     for path in files:
-        df = pd.read_csv(path, low_memory=False).dropna(subset=["Date of sale"])
-        df["sold_date"] = pd.to_datetime(df["Date of sale"], format="%m/%d/%Y", errors="coerce")
-        df = df.dropna(subset=["sold_date"])
-        df["name"]         = df["Description"].astype(str).str.split("\n").str[0].str.strip().str[:80]
-        df["revenue"]      = strip_dollar(df["Item price"])
-        df["shipping_rev"] = strip_dollar(df["Buyer shipping cost"])
-        df["usps_cost"]    = strip_dollar(df["USPS Cost"])
-        df["platform_fee"] = strip_dollar(df["Depop fee"]) + strip_dollar(df["Depop Payments fee"])
-        df["net_payout"]   = df["revenue"] - df["platform_fee"] - df["usps_cost"]
-        df["platform"]     = "depop"
-        df["cog"]          = 0.0
+        raw_file = pd.read_csv(path, low_memory=False).dropna(subset=["Date of sale"])
+        frames.append(raw_file)
+        print(f"  ✓ {path.name}: {len(raw_file)} sales")
+    raw = pd.concat(frames, ignore_index=True)
 
-        keep = ["name", "platform", "cog", "revenue", "shipping_rev",
-                "usps_cost", "platform_fee", "net_payout", "sold_date"]
-        frames.append(df[keep])
-        print(f"  ✓ {path.name}: {len(df)} sales")
+    # Export date ranges overlap (Dec 2023 is in two files), so drop rows that appear twice
+    before = len(raw)
+    raw = raw.drop_duplicates(subset=["Date of sale", "Time of sale", "Description", "Item price"])
+    print(f"  → removed {before - len(raw)} duplicate rows from overlapping exports")
 
-    if not frames:
-        return pd.DataFrame()
+    # Sales refunded in full never became revenue
+    fully_refunded = strip_dollar(raw["Refunded to buyer amount"]) >= strip_dollar(raw["Item price"])
+    df = raw[~fully_refunded].copy()
+    print(f"  → removed {fully_refunded.sum()} fully refunded sales")
 
-    result = pd.concat(frames, ignore_index=True)
-    result = result[result["revenue"] > 0]
+    df["sold_date"]    = pd.to_datetime(df["Date of sale"], format="%m/%d/%Y", errors="coerce")
+    df = df.dropna(subset=["sold_date"]).copy()
+    df["listed_date"]  = pd.to_datetime(df["Date of listing"], format="%m/%d/%Y", errors="coerce")
+    df["name"]         = df["Description"].astype(str).str.split("\n").str[0].str.strip().str[:80]
+    df["revenue"]      = strip_dollar(df["Item price"])
+    df["shipping_rev"] = strip_dollar(df["Buyer shipping cost"])
+    df["usps_cost"]    = strip_dollar(df["USPS Cost"])
+    df["platform_fee"] = strip_dollar(df["Depop fee"]) + strip_dollar(df["Depop Payments fee"])
+    df["net_payout"]   = df["revenue"] - df["platform_fee"] - df["usps_cost"]
+    df["brand"]        = df["Brand"]
+    df["category"]     = df["Category"]
+    df["platform"]     = "depop"
+    df["cog"]          = 0.0
+
+    result = df[df["revenue"] > 0].copy()
     result["sold_year"]  = result["sold_date"].dt.year
     result["sold_month"] = result["sold_date"].dt.month
+    result = result[["name", "platform", "cog", "revenue", "shipping_rev", "usps_cost",
+                     "platform_fee", "net_payout", "sold_date", "sold_year", "sold_month",
+                     "listed_date", "brand", "category"]]
     print(f"  → Depop total: {len(result)} sales")
     return result
 
